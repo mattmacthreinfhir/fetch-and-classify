@@ -12,3 +12,4 @@ All notable changes to this project will be documented in this file.
 - Zod schemas for content classification, API request/response validation (`src/types/index.ts`)
 - Supabase client setup with service role key (`src/lib/supabase.ts`)
 - Database migration SQL with content table, GIN indexes, and RLS policies (`supabase/migrations/001_create_content_table.sql`)
+- Content extraction module using Mozilla Readability with meta tag fallbacks (`src/lib/extractor.ts`)
