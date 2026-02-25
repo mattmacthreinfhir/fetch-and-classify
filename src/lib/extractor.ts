@@ -3,7 +3,7 @@ import { JSDOM } from "jsdom";
 import type { ExtractedContent } from "@/types";
 
 const FETCH_TIMEOUT_MS = 10_000;
-const MAX_BODY_BYTES = 512_000; // 500KB — enforced during streaming
+const MAX_BODY_BYTES = 1_048_576; // 1MB — enforced during streaming
 
 /**
  * Fetches a URL and extracts article content using Mozilla Readability.
@@ -15,11 +15,27 @@ export async function extractContent(url: string): Promise<ExtractedContent> {
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {
     throw new Error(
-      `Unsupported content type: ${contentType}. Only HTML pages are supported.`
+      `Unsupported content type: ${contentType}. Only HTML and plain text pages are supported.`
     );
   }
 
-  const html = await readBodyWithLimit(response, MAX_BODY_BYTES);
+  const body = await readBodyWithLimit(response, MAX_BODY_BYTES);
+
+  // Plain text — return directly without HTML parsing
+  if (contentType.includes("text/plain")) {
+    const text = body.trim();
+    if (!text) {
+      throw new Error("Could not extract any text content from the page.");
+    }
+    return {
+      title: null,
+      body_text: text,
+      author: null,
+      publish_date: null,
+    };
+  }
+
+  const html = body;
 
   if (isProtectedPage(html)) {
     throw new Error(
@@ -41,7 +57,7 @@ export async function extractContent(url: string): Promise<ExtractedContent> {
       title: article.title || extractTitle(document, jsonLd),
       body_text: article.textContent.trim(),
       author: article.byline || extractAuthor(document, jsonLd),
-      publish_date: article.publishedTime || extractDate(document, jsonLd),
+      publish_date: normalizeDate(article.publishedTime) || extractDate(document, jsonLd),
     };
   }
 
@@ -253,14 +269,27 @@ function extractAuthor(document: Document, jsonLd: JsonLdData | null): string | 
 }
 
 function extractDate(document: Document, jsonLd: JsonLdData | null): string | null {
-  return (
+  const raw =
     metaContent(document, "article:published_time") ||
     metaContent(document, "datePublished") ||
     metaContent(document, "date") ||
     metaContent(document, "dc.date") ||
     jsonLd?.datePublished ||
-    null
-  );
+    null;
+
+  return normalizeDate(raw);
+}
+
+/**
+ * Attempts to parse a date string into ISO 8601 format.
+ * Returns null if the date is unparseable — avoids sending
+ * invalid timestamps to Postgres TIMESTAMPTZ columns.
+ */
+function normalizeDate(raw: string | null): string | null {
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
 }
 
 // --- Bot protection detection ---

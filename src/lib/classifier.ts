@@ -9,17 +9,28 @@ const MAX_BODY_CHARS = MAX_BODY_TOKENS * 4;
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000; // exponential backoff: 1s, 2s, 4s
 
-const SYSTEM_PROMPT = `You are a content classification engine for a health and wellness platform.
+const SYSTEM_PROMPT = `You are a content classification engine for a health and wellness platform called Tellory.
 
-Given an article's title and body text, you must:
-1. Classify it into 1-3 categories from this list:
-   ${CATEGORIES.join(", ")}
-2. Write a 2-3 sentence summary
-3. Rate your classification confidence from 0.0 to 1.0
+Your job is to classify articles that are relevant to health, wellness, beauty, and lifestyle topics. The platform's content pillars are:
+${CATEGORIES.join(", ")}
+
+Given an article's title and body text:
+1. Determine whether the article is relevant to health/wellness topics
+2. If relevant, classify it into 1-3 categories from the list above
+3. Write a 2-3 sentence summary
+4. Rate your classification confidence from 0.0 to 1.0
+
+IMPORTANT — Confidence scoring guidelines:
+- 0.9-1.0: Article clearly and primarily about one or more of the listed categories
+- 0.7-0.89: Article touches on health/wellness topics but isn't primarily about them
+- 0.3-0.69: Article is only tangentially related (e.g. a sports match report, business news, politics) — pick the closest category but use LOW confidence
+- 0.0-0.29: Article has no meaningful connection to health/wellness topics
+
+Do NOT force-fit content into categories. A football match report is NOT "fitness" or "lifestyle". A tech product review is NOT "lifestyle". Only assign high confidence when the article genuinely discusses health, wellness, beauty, or related topics as its primary subject.
 
 Respond ONLY with valid JSON in this exact format:
 {
-  "categories": ["category1", "category2"],
+  "categories": ["category1"],
   "summary": "A concise 2-3 sentence summary.",
   "confidence_score": 0.85
 }`;

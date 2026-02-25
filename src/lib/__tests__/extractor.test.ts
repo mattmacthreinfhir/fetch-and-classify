@@ -104,7 +104,7 @@ describe("extractContent", () => {
     expect(result.title).toBeTruthy();
     // Author and date extracted from JSON-LD since no meta tags exist
     expect(result.author).toBe("Alice, Bob");
-    expect(result.publish_date).toBe("2025-06-01T12:00:00Z");
+    expect(result.publish_date).toBe("2025-06-01T12:00:00.000Z");
   });
 
   it("rejects non-HTML content types", async () => {
@@ -121,7 +121,7 @@ describe("extractContent", () => {
   });
 
   it("rejects oversized pages", async () => {
-    const hugeHtml = "<html><body>" + "x".repeat(600_000) + "</body></html>";
+    const hugeHtml = "<html><body>" + "x".repeat(1_100_000) + "</body></html>";
     mockFetch.mockResolvedValueOnce(htmlResponse(hugeHtml));
 
     await expect(extractContent("https://example.com/huge")).rejects.toThrow(

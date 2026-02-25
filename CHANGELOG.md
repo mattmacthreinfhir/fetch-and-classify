@@ -15,4 +15,5 @@ All notable changes to this project will be documented in this file.
 - Content extraction with Readability, JSON-LD parsing, meta tag fallbacks, URL normalization, and streaming size limits (`src/lib/extractor.ts`)
 - LLM classifier using Claude with structured JSON output, Zod validation, and exponential backoff retry (`src/lib/classifier.ts`)
 - Pipeline orchestration: extract → classify → store with status tracking, error isolation, and timing (`src/lib/pipeline.ts`)
+- API routes: `POST /api/content` (submit URL), `GET /api/content` (list with filters/pagination), `GET /api/content/[id]` (single record)
 - Vitest test suite with 33 tests covering extractor, classifier, pipeline, and URL normalization (`src/lib/__tests__/`)
