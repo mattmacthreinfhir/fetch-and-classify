@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// --- Valid content categories (modeled after Tellory's content pillars) ---
+// --- Valid content categories (health & wellness content pillars) ---
 
 export const CATEGORIES = [
   "aging",
@@ -43,7 +43,9 @@ export interface ExtractedContent {
 
 // --- Content record (matches Supabase `content` table) ---
 
-export type ContentStatus = "pending" | "processing" | "completed" | "failed";
+export type ContentStatus = "pending" | "extracting" | "classifying" | "completed" | "failed";
+
+export type ReviewStatus = "approved" | "rejected";
 
 export interface ContentRecord {
   id: string;
@@ -60,6 +62,9 @@ export interface ContentRecord {
   error_message: string | null;
   llm_model: string | null;
   processing_time_ms: number | null;
+  review_status: ReviewStatus | null;
+  review_notes: string | null;
+  reviewed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -78,12 +83,21 @@ export const ContentQuerySchema = z.object({
     .enum(["true", "false"])
     .transform((v) => v === "true")
     .optional(),
-  status: z.enum(["pending", "processing", "completed", "failed"]).optional(),
+  status: z.enum(["pending", "extracting", "classifying", "completed", "failed"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });
 
 export type ContentQuery = z.infer<typeof ContentQuerySchema>;
+
+// --- Manual review schema ---
+
+export const ReviewSchema = z.object({
+  review_status: z.enum(["approved", "rejected"]),
+  review_notes: z.string().max(500).optional(),
+});
+
+export type ReviewRequest = z.infer<typeof ReviewSchema>;
 
 export interface PaginatedResponse<T> {
   data: T[];

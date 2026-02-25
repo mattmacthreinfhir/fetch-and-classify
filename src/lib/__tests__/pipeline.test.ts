@@ -20,14 +20,22 @@ vi.mock("../classifier", () => ({
   classifyContent: (...args: unknown[]) => mockClassifyContent(...args),
 }));
 
-import { processUrl } from "../pipeline";
+// Mock logger (suppress log output in tests)
+vi.mock("../logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
-function setupSupabaseChain(responses: {
+import { processUrl, runPipeline, reanalyzeRecord } from "../pipeline";
+
+/**
+ * Sets up the Supabase mock chain for processUrl.
+ * Call order: select existing → insert → update(extracting) → update(classifying) → update(completed/failed)
+ */
+function setupProcessUrlChain(responses: {
   selectExisting?: { data: unknown; error?: unknown };
   insert?: { data: unknown; error?: unknown };
-  updateProcessing?: { data: unknown; error?: unknown };
   updateCompleted?: { data: unknown; error?: unknown };
-  updateFailed?: { data: unknown; error?: unknown };
+  updateFailed?: { data?: unknown; error?: unknown };
 }) {
   let callCount = 0;
 
@@ -65,42 +73,76 @@ function setupSupabaseChain(responses: {
       };
     }
 
-    // Call 3: update to processing
-    if (callCount === 3) {
-      return {
-        update: () => ({
-          eq: () => Promise.resolve(responses.updateProcessing ?? { error: null }),
-        }),
-      };
-    }
-
-    // Call 4: update completed or failed
-    if (callCount === 4) {
-      return {
-        update: () => ({
-          eq: () => {
-            // If it has .select() chaining, it's the completed update
-            if (responses.updateCompleted) {
-              return {
-                select: () => ({
-                  single: () => Promise.resolve(responses.updateCompleted),
-                }),
-              };
-            }
-            // Otherwise it's a failed update (no select chain needed)
-            return Promise.resolve(responses.updateFailed ?? { error: null });
-          },
-        }),
-      };
-    }
-
-    // Fallback for any additional calls (e.g., failed update after completed update fails)
-    return {
-      update: () => ({
-        eq: () => Promise.resolve({ error: null }),
-      }),
-    };
+    // Calls 3+: status updates (extracting, classifying, completed/failed)
+    return makeUpdateMock(responses);
   });
+}
+
+/**
+ * Sets up the Supabase mock chain for runPipeline/reanalyzeRecord.
+ * Call order: update(extracting) → update(classifying) → update(completed/failed)
+ * For reanalyzeRecord: select → update(clear error) → update(extracting) → ...
+ */
+function setupRunPipelineChain(responses: {
+  updateCompleted?: { data: unknown; error?: unknown };
+  updateFailed?: { data?: unknown; error?: unknown };
+}) {
+  mockFrom.mockImplementation(() => makeUpdateMock(responses));
+}
+
+function setupReanalyzeChain(responses: {
+  selectExisting?: { data: unknown; error?: unknown };
+  updateCompleted?: { data: unknown; error?: unknown };
+  updateFailed?: { data?: unknown; error?: unknown };
+}) {
+  let callCount = 0;
+
+  mockFrom.mockImplementation(() => {
+    callCount++;
+
+    // Call 1: select existing record
+    if (callCount === 1) {
+      return {
+        select: () => ({
+          eq: () => ({
+            single: () =>
+              Promise.resolve(
+                responses.selectExisting ?? { data: null, error: null }
+              ),
+          }),
+        }),
+      };
+    }
+
+    // Call 2+: clear error + status updates
+    return makeUpdateMock(responses);
+  });
+}
+
+function makeUpdateMock(responses: {
+  updateCompleted?: { data: unknown; error?: unknown };
+  updateFailed?: { data?: unknown; error?: unknown };
+}) {
+  return {
+    update: (data: Record<string, unknown>) => ({
+      eq: () => {
+        // If this is the completed update (has categories), chain select/single
+        if (data.status === "completed" && responses.updateCompleted) {
+          return {
+            select: () => ({
+              single: () => Promise.resolve(responses.updateCompleted),
+            }),
+          };
+        }
+        // If this is the failed update, return directly
+        if (data.status === "failed") {
+          return Promise.resolve(responses.updateFailed ?? { error: null });
+        }
+        // Status stage updates (extracting, classifying, clear error) — just resolve
+        return Promise.resolve({ error: null });
+      },
+    }),
+  };
 }
 
 const mockExtracted = {
@@ -124,7 +166,7 @@ beforeEach(() => {
 describe("processUrl", () => {
   it("returns existing record if URL already ingested", async () => {
     const existing = { id: "existing-id", url: "https://example.com", status: "completed" };
-    setupSupabaseChain({ selectExisting: { data: existing } });
+    setupProcessUrlChain({ selectExisting: { data: existing } });
 
     const result = await processUrl("https://example.com");
 
@@ -144,7 +186,7 @@ describe("processUrl", () => {
       needs_review: false,
     };
 
-    setupSupabaseChain({
+    setupProcessUrlChain({
       selectExisting: { data: null },
       updateCompleted: { data: completedRecord, error: null },
     });
@@ -170,7 +212,7 @@ describe("processUrl", () => {
       confidence_score: 0.5,
     };
 
-    setupSupabaseChain({
+    setupProcessUrlChain({
       selectExisting: { data: null },
       updateCompleted: { data: completedRecord, error: null },
     });
@@ -184,7 +226,7 @@ describe("processUrl", () => {
   });
 
   it("marks record as failed when extraction throws", async () => {
-    setupSupabaseChain({
+    setupProcessUrlChain({
       selectExisting: { data: null },
       updateFailed: { error: null },
     });
@@ -196,7 +238,7 @@ describe("processUrl", () => {
   });
 
   it("marks record as failed when classification throws", async () => {
-    setupSupabaseChain({
+    setupProcessUrlChain({
       selectExisting: { data: null },
       updateFailed: { error: null },
     });
@@ -208,7 +250,7 @@ describe("processUrl", () => {
   });
 
   it("throws when insert fails", async () => {
-    setupSupabaseChain({
+    setupProcessUrlChain({
       selectExisting: { data: null },
       insert: { data: null, error: { message: "duplicate key" } },
     });
@@ -216,5 +258,81 @@ describe("processUrl", () => {
     await expect(processUrl("https://example.com")).rejects.toThrow(
       "Failed to create record"
     );
+  });
+});
+
+describe("runPipeline", () => {
+  it("runs extract → classify → store for an existing record", async () => {
+    const completedRecord = {
+      id: "test-uuid",
+      url: "https://example.com",
+      status: "completed",
+      categories: ["nutrition"],
+      confidence_score: 0.88,
+      needs_review: false,
+    };
+
+    setupRunPipelineChain({
+      updateCompleted: { data: completedRecord, error: null },
+    });
+
+    mockExtractContent.mockResolvedValueOnce(mockExtracted);
+    mockClassifyContent.mockResolvedValueOnce(mockClassification);
+
+    const result = await runPipeline("test-uuid", "https://example.com");
+
+    expect(result.status).toBe("completed");
+    expect(mockExtractContent).toHaveBeenCalledWith("https://example.com");
+    expect(mockClassifyContent).toHaveBeenCalledWith(mockExtracted);
+  });
+
+  it("marks as failed when extraction throws", async () => {
+    setupRunPipelineChain({ updateFailed: { error: null } });
+
+    mockExtractContent.mockRejectedValueOnce(new Error("Timeout"));
+
+    await expect(runPipeline("test-uuid", "https://example.com")).rejects.toThrow("Timeout");
+  });
+});
+
+describe("reanalyzeRecord", () => {
+  it("re-runs pipeline on existing record", async () => {
+    const existing = { id: "test-uuid", url: "https://example.com", status: "completed" };
+    const reanalyzed = { ...existing, categories: ["fitness"], confidence_score: 0.9 };
+
+    setupReanalyzeChain({
+      selectExisting: { data: existing },
+      updateCompleted: { data: reanalyzed, error: null },
+    });
+
+    mockExtractContent.mockResolvedValueOnce(mockExtracted);
+    mockClassifyContent.mockResolvedValueOnce(mockClassification);
+
+    const result = await reanalyzeRecord("test-uuid");
+
+    expect(result).toEqual(reanalyzed);
+    expect(mockExtractContent).toHaveBeenCalledWith("https://example.com");
+  });
+
+  it("throws when record not found", async () => {
+    setupReanalyzeChain({
+      selectExisting: { data: null, error: { message: "not found" } },
+    });
+
+    await expect(reanalyzeRecord("missing-id")).rejects.toThrow("Record not found");
+    expect(mockExtractContent).not.toHaveBeenCalled();
+  });
+
+  it("marks as failed when extraction throws during reanalysis", async () => {
+    const existing = { id: "test-uuid", url: "https://example.com", status: "completed" };
+
+    setupReanalyzeChain({
+      selectExisting: { data: existing },
+      updateFailed: { error: null },
+    });
+
+    mockExtractContent.mockRejectedValueOnce(new Error("Bot detection"));
+
+    await expect(reanalyzeRecord("test-uuid")).rejects.toThrow("Bot detection");
   });
 });

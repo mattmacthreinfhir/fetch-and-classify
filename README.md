@@ -1,4 +1,4 @@
-# Tellory Content Ingestion Service
+# Womens Health Content Ingestion Service
 
 A content ingestion and classification pipeline built with Next.js, Supabase, and Anthropic Claude. Submit any URL and the service will fetch the article, extract its content, classify it using AI, and store the results.
 
@@ -21,9 +21,10 @@ A content ingestion and classification pipeline built with Next.js, Supabase, an
 │                                                  │
 │  ┌─────────────┐  ┌──────────────────────────┐  │
 │  │  Simple UI   │  │     API Routes           │  │
-│  │  - Submit URL│  │  POST /api/content       │  │
-│  │  - Browse    │  │  GET  /api/content       │  │
-│  │  - Filter    │  │  GET  /api/content/[id]  │  │
+│  │  - Submit URL│  │  POST /api/content            │  │
+│  │  - Browse    │  │  GET  /api/content            │  │
+│  │  - Filter    │  │  GET  /api/content/[id]       │  │
+│  │  - Reanalyze │  │  POST /api/content/[id]/reanalyze│
 │  └──────┬──────┘  └──────┬───────────────────┘  │
 │         │                │                       │
 │         └────────────────┤                       │
@@ -107,6 +108,7 @@ The UI provides:
 - Status badges (pending, processing, completed, failed)
 - Category badges and confidence scores on each record
 - A "needs review" flag when the LLM confidence is below 70%
+- A "Reanalyze" button to re-run extraction and classification on any record
 
 ### Testing Without Supabase
 
@@ -119,6 +121,7 @@ The UI will load without Supabase configured — it shows an empty state. The AP
 | `POST` | `/api/content` | Submit a URL for ingestion |
 | `GET` | `/api/content` | List content with optional filters (`?category=`, `?status=`, `?needs_review=`, `?limit=`, `?offset=`) |
 | `GET` | `/api/content/[id]` | Get a single content record by ID |
+| `POST` | `/api/content/[id]/reanalyze` | Re-run extraction and classification on an existing record |
 
 ### POST /api/content
 
@@ -144,6 +147,44 @@ curl "http://localhost:3000/api/content?category=nutrition&status=completed&limi
 
 ```bash
 curl http://localhost:3000/api/content/550e8400-e29b-41d4-a716-446655440000
+```
+
+### POST /api/content/[id]/reanalyze
+
+Re-fetches the URL and re-classifies the content. Useful after prompt changes or if the original extraction failed.
+
+```bash
+curl -X POST http://localhost:3000/api/content/550e8400-e29b-41d4-a716-446655440000/reanalyze
+```
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── page.tsx                          # UI — submit URLs, browse/filter results
+│   ├── layout.tsx                        # Root layout with metadata
+│   └── api/
+│       └── content/
+│           ├── route.ts                  # POST (submit) + GET (list)
+│           └── [id]/
+│               ├── route.ts             # GET (single record)
+│               └── reanalyze/
+│                   └── route.ts         # POST (re-run pipeline)
+├── lib/
+│   ├── extractor.ts                     # URL fetch, Readability, JSON-LD, meta tags
+│   ├── classifier.ts                    # Claude LLM classification with Zod validation
+│   ├── pipeline.ts                      # Orchestration: extract → classify → store
+│   ├── supabase.ts                      # Supabase client (server-side)
+│   └── __tests__/
+│       ├── extractor.test.ts            # 16 tests
+│       ├── classifier.test.ts           # 11 tests
+│       └── pipeline.test.ts             # 6 tests
+├── types/
+│   └── index.ts                         # Zod schemas, TypeScript types, categories
+supabase/
+└── migrations/
+    └── 001_create_content_table.sql     # Postgres migration with GIN indexes
 ```
 
 ## Environment Variables

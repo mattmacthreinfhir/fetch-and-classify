@@ -8,11 +8,11 @@ Raw back-and-forth between developer and AI assistant during implementation.
 
 **Developer:** Please read the project-plan.md file and begin implementation, we need specific points of code commits that follow the plan - this is highly important.
 
-**Assistant:** Read the project plan and assessed the empty repo state (just .env.local, .gitignore, project-plan.md, no commits). Created a todo list with 8 commit milestones and began scaffolding with create-next-app.
+**Assistant:** Read the project plan and assessed the empty repo state (just .env.local, .gitignore, project-plan.md, no commits). Created a todo list with 8 development milestones and began scaffolding with create-next-app.
 
 ---
 
-## Commit 1 Discussion
+## Stage 1: Project Scaffolding
 
 **Assistant:** Set up Next.js scaffold, installed dependencies (@mozilla/readability, jsdom, @anthropic-ai/sdk, @supabase/supabase-js, zod), created .env.example, .gitignore. Attempted to create a git commit.
 
@@ -20,9 +20,9 @@ Raw back-and-forth between developer and AI assistant during implementation.
 
 **Assistant:** Understood — will never commit. Will implement code and clearly mark each commit point for the developer to commit manually.
 
-**Developer:** Lets pause and review commit 1 -- we should probably introduce a README and a CHANGELOG from this point.
+**Developer:** Lets pause and review -- we should probably introduce a README and a CHANGELOG from this point.
 
-**Assistant:** Good call. Created a comprehensive README.md with architecture diagram, stack table, setup instructions, and API docs. Created CHANGELOG.md tracking changes. Marked commit point 1 as ready.
+**Assistant:** Good call. Created a comprehensive README.md with architecture diagram, stack table, setup instructions, and API docs. Created CHANGELOG.md tracking changes.
 
 **Developer:** Next 14 seems a bit behind.
 
@@ -42,9 +42,9 @@ setup instructions, and API docs. Add CHANGELOG and .env.example template.
 
 ---
 
-## Commit 2 Discussion
+## Stage 2: Types, Database & Supabase Client
 
-**Developer:** Lets move onto the next commit phase.
+**Developer:** Lets move onto the next phase.
 
 **Assistant:** Created src/types/index.ts (Zod schemas, TypeScript types, category list), src/lib/supabase.ts (server client), supabase/migrations/001_create_content_table.sql (full migration with GIN indexes, RLS). Verified Zod 4 API compatibility. Ran build — node_modules were corrupted from the create-next-app copy, so reinstalled. Build passed clean.
 
@@ -66,9 +66,9 @@ setup instructions, and API docs. Add CHANGELOG and .env.example template.
 
 ---
 
-## Commit 3 Discussion
+## Stage 3: Content Extraction
 
-**Developer:** Lets continue with the next commit then.
+**Developer:** Lets continue with the next phase then.
 
 **Assistant:** Built extractor.ts with Readability + jsdom. Tested live extraction against WebMD (success), BBC (404), NYT (403). Extraction worked correctly on valid URLs.
 
@@ -82,9 +82,9 @@ setup instructions, and API docs. Add CHANGELOG and .env.example template.
 
 ---
 
-## Commit 4 Discussion
+## Stage 4: LLM Classification & Testing
 
-**Developer:** Alright continue to 4.
+**Developer:** Alright continue to the next stage.
 
 **Assistant:** Built classifier.ts with Claude integration, structured JSON output, Zod validation, markdown fence stripping, body text truncation, and exponential backoff retry (1s/2s/4s). Lint and build clean.
 
@@ -106,9 +106,9 @@ setup instructions, and API docs. Add CHANGELOG and .env.example template.
 
 ---
 
-## Commit 5 Discussion
+## Stage 5: Pipeline Orchestration & Extractor Hardening
 
-**Developer:** OK next commit.
+**Developer:** OK next stage.
 
 **Assistant:** Built pipeline.ts (extract → classify → store) with status tracking, error isolation, timing, confidence threshold flagging, and duplicate URL detection. Added 6 pipeline tests (26 total). Lint clean, build passes.
 
@@ -123,7 +123,7 @@ Pipeline updated to normalize URLs before dedup check. Test suite grew to 33 tes
 
 ---
 
-## Commit 6 Discussion
+## Stage 6: API Routes
 
 **Developer:** OK, next phase.
 
@@ -156,15 +156,15 @@ All pass lint, build, and 33 tests.
 
 **Developer:** Lets update the CONVERSATION.md and DEVLOG.md and continue to the next phase.
 
-**Assistant:** Updated both files and moved on to Commit 7 (UI).
+**Assistant:** Updated both files and moved on to the UI phase.
 
 ---
 
-## Commit 7 Discussion
+## Stage 7: Frontend UI
 
 **Assistant:** Built the UI page (page.tsx): URL submission form, category and status filter dropdowns, content list with status badges, category badges, confidence scores, needs-review flags, and dark mode support. Updated layout.tsx metadata.
 
-**Developer:** Lets test the UI locally first before committing.
+**Developer:** Lets test the UI locally first.
 
 **Assistant:** Started dev server, loaded the page in a browser. Port 3000 was in use so switched to 3001. UI rendered correctly: header, input, submit button, both filter dropdowns (15 categories, 4 statuses), record count, empty state message. The `/api/content` GET returned 500 (expected — Supabase not configured locally) but the UI handled it gracefully.
 
@@ -199,6 +199,138 @@ All pass lint, build, and 33 tests.
 **Developer:** OK lets update the CONVERSATION.md and DEVLOG.md to cover our recent interactions.
 
 **Assistant:** Updated both files.
+
+---
+
+## Stage 8: Documentation & Polish
+
+**Developer:** Lets proceed with the last phase: README, .env.example, and final polish.
+
+**Assistant:** Updated README with reanalyze endpoint in API table and curl examples, added a Project Structure tree, added "Reanalyze" to UI feature list. Updated CHANGELOG with a `[0.2.0]` section covering all recent changes (UI, reanalyze, prompt tuning, date normalization, body size limit). Updated DEVLOG and CONVERSATION. Verified .env.example was already complete. Ran lint, build, and tests — all clean.
+
+---
+
+## Session 3 — Final Polish Phase
+
+**Developer:** As part of this final polish phase we need to consider:
+- Security concerns (input validation, injection)
+- Rate limiting (10 URLs per minute max)
+- Progress bar for retrieving the stream data via URL (user feedback)
+- Test coverage
+- Appropriate logging and reporting
+- Ability for us to improve the prompt/standard of classification based on manual intervention.
+
+**Assistant:** Entered plan mode. Launched three explore agents in parallel to audit the codebase: security audit, test coverage gaps, and classification feedback mechanisms. All three returned comprehensive findings — SSRF risk, prompt injection, error disclosure, no rate limiting, 0% API route test coverage, no manual override capability.
+
+Built a detailed implementation plan covering 6 steps: structured logging, security hardening, rate limiting, progress feedback, manual intervention, and test coverage.
+
+**Assistant (question):** Which approach for progress feedback — Polling (POST returns 202, UI polls every 2s) or Server-Sent Events (real-time streaming)?
+
+**Developer:** Polling approach (Recommended)
+
+**Assistant (question):** Which scope for manual intervention — Simple approve/reject or Full inline editing of categories/summaries?
+
+**Developer:** Simple approve/reject
+
+**Assistant:** Wrote the full plan and presented for approval.
+
+**Developer:** [Approved the plan]
+
+---
+
+### Step 1: Structured Logging
+
+**Assistant:** Created `src/lib/logger.ts` — minimal JSON-to-stdout logger with info/warn/error methods. Wired logging into pipeline.ts (each stage), classifier.ts (retry attempts), and all API routes (POST requests, reanalyze, errors). Hit a few scope issues during implementation: `id` not in scope in a catch block (moved params extraction before try), `parsed` block-scoped inside try but referenced in catch (simplified to just log the error message). All resolved.
+
+**Verification:** Lint clean, build passes, 33/33 tests.
+
+---
+
+### Step 2: Security Hardening
+
+**Assistant:** Three sub-steps:
+1. **SSRF protection** — Added `isPrivateUrl()` check with blocked hostnames and private IP regex patterns before `fetchWithTimeout()`.
+2. **Prompt injection defense** — Changed user message format from flat text to XML delimiters (`<article><title>...</title><body>...</body></article>`).
+3. **Error sanitization** — API routes now return generic "An internal error occurred" instead of raw error messages.
+
+Two classifier tests failed after the XML delimiter change (expected "Title:" format, now expects `<title>` tags). Updated assertions.
+
+**Verification:** Lint clean, build passes, 33/33 tests.
+
+---
+
+### Step 3: Rate Limiting
+
+**Assistant:** Created `src/lib/rate-limit.ts` — in-memory sliding window. `checkRateLimit(key, { windowMs, maxRequests })` returns `{ allowed, retryAfterMs }`. Periodic cleanup every 5 minutes. Wired into POST `/api/content` keyed by `x-forwarded-for` IP, returns 429 with `Retry-After` header.
+
+**Verification:** Lint clean, build passes, 33/33 tests.
+
+---
+
+### Step 4: Progress Feedback
+
+**Assistant:** This was the largest change:
+- Expanded `ContentStatus` from 3 to 5 states (added `extracting`, `classifying`)
+- Extracted `runPipeline(id, url)` as shared function from `processUrl` — eliminated duplication with `reanalyzeRecord`
+- Rewrote POST route to use `after()` for async pipeline execution, return 202 immediately
+- Added `pollForCompletion(id)` to UI — polls every 2s, shows spinner + stage labels
+- Created `002_add_review_columns_and_status.sql` migration
+- Completely rewrote pipeline tests — new mock strategy inspects `data.status` to determine chain behavior instead of counting calls
+
+Pipeline tests failed initially — `supabase.from(...).update(...).eq(...).select is not a function` because the mock chain was based on call counting but the pipeline now has extra DB calls for stage updates. Rewrote with `makeUpdateMock` that inspects the status field.
+
+**Verification:** Lint clean, build passes, 38/38 tests.
+
+---
+
+### Step 5: Manual Intervention
+
+**Assistant:** Updated types with `ReviewSchema`, `ReviewStatus`, and review fields on `ContentRecord`. Added PATCH handler to `[id]/route.ts` — validates UUID + ReviewSchema, updates review_status/review_notes/reviewed_at, toggles needs_review (cleared on approve, kept on reject). Added UI with Approve button (immediate PATCH), Reject button (opens inline textarea for notes), and review status badges. Fixed TypeScript errors in pipeline tests (made `data` optional in `updateFailed` type).
+
+**Verification:** Lint clean, TypeScript clean, build passes, 38/38 tests.
+
+---
+
+### Step 6: Test Coverage
+
+**Assistant:** Created `logger.test.ts` (6 tests) and `rate-limit.test.ts` (5 tests). Added 8 tests to `extractor.test.ts` — 6 SSRF tests (localhost, 127.x, 10.x, 192.168.x, 169.254.x, file://) and 2 text/plain handling tests. Added v8 coverage config to vitest.config.ts. Added `test:coverage` script to package.json.
+
+**Verification:** Lint clean, TypeScript clean, build passes, **57/57 tests passing**.
+
+---
+
+---
+
+## Session 4 — UI Polish & Hardening
+
+**Developer:** A few things: Remove references to Tellory. Submit button is not visible (or the title "Submit Content"). All buttons should have cursor of pointer.
+
+**Assistant:** Three fixes applied:
+1. Removed all Tellory references across the codebase — nav bar wordmark, description text, footer, page title, classifier prompt, User-Agent string, package name, types comments, CSS comments.
+2. Upgraded "Submit Content" heading from faint `label-caps` (11px, #999 gray) to a visible `h2` with `font-medium`, `uppercase`, `tracking-widest` in charcoal.
+3. Added global `button, select { cursor: pointer; }` rule in globals.css.
+
+**Verification:** Lint clean, TypeScript clean, build passes, 57/57 tests.
+
+---
+
+**Developer:** Confidence levels seem to have degraded completely. [Tellory article showing 10% confidence, classified as just "placeholder or navigation page"]
+
+**Assistant:** The low confidence was actually the classifier working correctly — `app.tellory.com` URLs are behind authentication, so the extractor was getting login/signup HTML instead of the article. The classifier rightfully gave it 10% confidence. The real fix was to detect auth-gated pages early in the extractor.
+
+Added `isAuthGatedPage()` detection — checks for signals like "sign in to continue", "subscribe to read", "members only" combined with minimal page content (<500 chars). Pages behind auth walls now get a clear error message instead of being sent to the classifier as garbage input.
+
+Also cleaned up remaining Tellory references found in the classifier system prompt and extractor User-Agent string.
+
+**Verification:** Lint clean, TypeScript clean, build passes, 57/57 tests.
+
+---
+
+**Developer:** We need a delete button (icon only).
+
+**Assistant:** Added `DELETE /api/content/[id]` endpoint with UUID validation, Supabase delete, and structured logging. Added a small trash icon button to each card (muted gray, red hover state), positioned before the Reanalyze button.
+
+**Verification:** Lint clean, TypeScript clean, build passes.
 
 ---
 

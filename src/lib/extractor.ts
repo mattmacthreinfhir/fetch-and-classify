@@ -44,6 +44,13 @@ export async function extractContent(url: string): Promise<ExtractedContent> {
     );
   }
 
+  if (isAuthGatedPage(html)) {
+    throw new Error(
+      `This page appears to require authentication (login/signup wall detected). ` +
+      `Content cannot be extracted without access.`
+    );
+  }
+
   const dom = new JSDOM(html, { url });
   const document = dom.window.document;
   const jsonLd = parseJsonLd(document);
@@ -104,9 +111,40 @@ export function normalizeUrl(raw: string): string {
   return parsed.toString();
 }
 
+// --- SSRF protection ---
+
+const BLOCKED_HOSTNAMES = ["localhost", "0.0.0.0"];
+
+const PRIVATE_IP_RANGES = [
+  /^127\./,                          // loopback
+  /^10\./,                           // class A private
+  /^172\.(1[6-9]|2\d|3[01])\./,     // class B private
+  /^192\.168\./,                     // class C private
+  /^169\.254\./,                     // link-local / cloud metadata
+  /^0\./,                            // "this" network
+  /^fc00:/i,                         // IPv6 unique-local
+  /^fe80:/i,                         // IPv6 link-local
+  /^::1$/,                           // IPv6 loopback
+];
+
+function isPrivateUrl(url: string): boolean {
+  const parsed = new URL(url);
+  const hostname = parsed.hostname.toLowerCase();
+
+  if (BLOCKED_HOSTNAMES.includes(hostname)) return true;
+  if (PRIVATE_IP_RANGES.some((re) => re.test(hostname))) return true;
+  if (!["http:", "https:"].includes(parsed.protocol)) return true;
+
+  return false;
+}
+
 // --- Fetch with timeout and size-limited body reading ---
 
 async function fetchWithTimeout(url: string): Promise<Response> {
+  if (isPrivateUrl(url)) {
+    throw new Error("URLs pointing to private or internal networks are not allowed.");
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -115,7 +153,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
       signal: controller.signal,
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; TelloryBot/1.0; +https://tellory.com)",
+          "Mozilla/5.0 (compatible; ContentBot/1.0)",
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Encoding": "gzip, deflate",
@@ -285,7 +323,7 @@ function extractDate(document: Document, jsonLd: JsonLdData | null): string | nu
  * Returns null if the date is unparseable — avoids sending
  * invalid timestamps to Postgres TIMESTAMPTZ columns.
  */
-function normalizeDate(raw: string | null): string | null {
+function normalizeDate(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const parsed = new Date(raw);
   if (isNaN(parsed.getTime())) return null;
@@ -310,6 +348,33 @@ const BOT_PROTECTION_SIGNALS = [
 function isProtectedPage(html: string): boolean {
   const lower = html.toLowerCase();
   return BOT_PROTECTION_SIGNALS.some((signal) => lower.includes(signal));
+}
+
+// --- Auth-gated page detection ---
+
+const AUTH_GATE_SIGNALS = [
+  "sign in to continue",
+  "log in to continue",
+  "login to continue",
+  "sign up to read",
+  "create an account",
+  "create account to continue",
+  "subscribe to read",
+  "members only",
+  "premium content",
+  "paywall",
+];
+
+function isAuthGatedPage(html: string): boolean {
+  const lower = html.toLowerCase();
+  const signalCount = AUTH_GATE_SIGNALS.filter((s) => lower.includes(s)).length;
+  // Require at least one signal AND very little article content
+  // (some legitimate pages mention "sign in" in a header/nav)
+  if (signalCount === 0) return false;
+  // Check if Readability would find substantial content — if it does, the page isn't truly gated
+  const dom = new JSDOM(html);
+  const textLength = dom.window.document.body?.textContent?.trim().length ?? 0;
+  return textLength < 500;
 }
 
 function metaContent(document: Document, nameOrProperty: string): string | null {

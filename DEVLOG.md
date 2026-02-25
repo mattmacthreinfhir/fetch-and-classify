@@ -10,9 +10,9 @@ A transparent record of decisions, questions, and thinking throughout the build 
 
 Started with a detailed implementation plan (`project-plan.md`) outlining a content ingestion and classification service built on Tellory's production stack: Next.js, Supabase, Anthropic Claude, deployed on Vercel.
 
-The plan was structured around a 4-hour execution blueprint with specific commit milestones to demonstrate clean, incremental delivery.
+The plan was structured around a 4-hour execution blueprint with specific milestones to demonstrate clean, incremental delivery.
 
-### Commit 1: Scaffolding
+### Stage 1: Project Scaffolding
 
 **Decision:** Used `create-next-app@latest` which pulled Next.js 16.1.6 (the plan referenced Next.js 14, but using the latest version is the right call for a new project).
 
@@ -20,7 +20,7 @@ The plan was structured around a 4-hour execution blueprint with specific commit
 
 **Decision:** Introduced a README and CHANGELOG from the very first commit. The thinking was that the project should be presentable at every commit point, not just at the end. Each commit should tell a story of incremental, professional delivery.
 
-### Commit 2: Types, Supabase Client & Migration
+### Stage 2: Types, Supabase Client & Migration
 
 **Question raised:** "Is the role key deprecated on Supabase, we need to be using their latest recommendations"
 
@@ -30,7 +30,7 @@ This was a good catch. Research showed that Supabase now recommends **publishabl
 
 **Verification:** Ran `npm run lint` and `npm run build` to confirm TypeScript strict mode and ESLint pass clean. Also started the dev server to verify HTTP 200 response.
 
-### Commit 3: Content Extraction
+### Stage 3: Content Extraction
 
 Built the extractor with `@mozilla/readability` + `jsdom`. Tested against real URLs:
 - WebMD (200 OK, extracted successfully)
@@ -45,7 +45,7 @@ Built the extractor with `@mozilla/readability` + `jsdom`. Tested against real U
 
 The philosophy: we can't bypass these protections (nor should we), but we should detect them and give clear, actionable error messages so the pipeline can mark records as `failed` with a useful `error_message`.
 
-### Commit 4: LLM Classification + Tests
+### Stage 4: LLM Classification & Testing
 
 **Question raised:** "Can we run some tests on the classification logic before we proceed"
 
@@ -69,7 +69,7 @@ All classifications were accurate and Zod validation passed on every response.
 
 Correct — for a project enforcing TypeScript strict mode, test scripts should be `.ts` too. Deleted the throwaway `.js` script in favor of proper Vitest `.test.ts` files.
 
-### Commit 5: Pipeline + Extractor Hardening
+### Stage 5: Pipeline Orchestration & Extractor Hardening
 
 **Question raised:** "Can we ensure we have full robustness when extracting data, how can we make it more efficient/performant/accurate"
 
@@ -92,7 +92,7 @@ Pipeline was updated to normalize URLs before the duplicate check.
 
 Test suite grew to 33 tests (added JSON-LD extraction and 6 URL normalization tests).
 
-### Commit 6: API Routes
+### Stage 6: API Routes
 
 Built three endpoints following the plan's API design:
 - `POST /api/content` — Zod-validated URL submission, triggers pipeline, returns 202 (new) or 200 (already exists)
@@ -119,14 +119,14 @@ The developer correctly identified this as over-engineering. For 3 well-defined 
 
 **Takeaway:** Know when to stop. Not every good idea is worth the complexity it introduces. The goal is a clean, functional deliverable — not a feature checklist.
 
-### Commit 7: UI + README Update
+### Stage 7: Frontend UI & README Update
 
 Built the frontend UI (`page.tsx`) with:
 - URL submission form with validation and loading state
-- Category filter dropdown (all 15 Tellory categories) and status filter dropdown
+- Category filter dropdown (all 15 health categories) and status filter dropdown
 - Content list with status badges, category badges, confidence scores, and "needs review" flags
 - Dark mode support via Tailwind
-- Updated `layout.tsx` metadata to "Tellory Content Ingestion"
+- Updated `layout.tsx` metadata to "Health Content Ingestion"
 
 **Question raised:** "Can we update the readme file to include setting up the local dev instance for the UI"
 
@@ -182,3 +182,145 @@ First fix only covered the meta tag fallback path in `extractDate()`. The Readab
 **Prompt engineering as a first-class concern:** Off-topic content classified with high confidence showed that LLM prompts need explicit guidance on when NOT to classify, not just how to classify. Confidence scoring guidelines and negative examples ("a football match report is NOT fitness") made a material difference.
 
 **Live testing reveals what mocks can't:** Date format incompatibilities, body size limits, missing code paths — all caught by testing with real URLs, not by unit tests. Both are necessary.
+
+---
+
+## Session 2 — 2026-02-25
+
+### Stage 8: Documentation & Polish
+
+**Decision:** This stage focused on making the project presentable and complete rather than adding new features. The codebase was functionally complete after the UI and live testing bug fixes — this was about documentation, structure, and ensuring everything is discoverable.
+
+**Changes made:**
+- **README:** Added the reanalyze endpoint (`POST /api/content/[id]/reanalyze`) to the API endpoints table and curl examples section. Added a "Project Structure" tree showing the full `src/` layout so newcomers can orient themselves quickly. Added "Reanalyze" to the UI feature list. Updated architecture diagram to show all four endpoints.
+- **CHANGELOG:** Added a `[0.2.0]` section covering all the UI, reanalyze, prompt tuning, date normalization, and body size changes. Fixed a stale "service role key" reference in the `[0.1.0]` section.
+- **.env.example:** Verified complete — already has all three required keys (`ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`) with clear comments.
+
+**Verification:** Lint clean, build passes, 33 tests passing.
+
+**Takeaway:** A project is only as good as its documentation. The code could be flawless, but if a new developer can't set it up or understand the structure, the quality is invisible. Final polish stages like this are not busywork — they're the difference between "code that works" and "a project someone else can pick up and run with."
+
+---
+
+## Session 3 — 2026-02-25
+
+### Production Hardening Phase
+
+**Prompt:** "As part of this final polish phase we need to consider: Security concerns (input validation, injection), Rate limiting (10 URLs per minute max), Progress bar for retrieving the stream data via URL (user feedback), Test coverage, Appropriate logging and reporting, Ability for us to improve the prompt/standard of classification based on manual intervention."
+
+This was a significant scope expansion — six cross-cutting concerns that touch nearly every file. The approach was to plan everything up front, get approval on key design decisions, then implement incrementally with verification at each step.
+
+**Two key decisions were made before implementation:**
+
+1. **Progress feedback approach** — The developer chose polling over streaming (SSE/WebSockets). POST returns 202 immediately, UI polls `GET /api/content/[id]` every 2s. This is simpler, requires no infrastructure changes, and works behind proxies/CDNs. The tradeoff (2s latency between updates) is acceptable for a pipeline that takes 5-15 seconds.
+
+2. **Manual intervention scope** — Simple approve/reject workflow instead of full inline editing of categories/summaries. This keeps the scope manageable while still enabling the core feedback loop: flag low-confidence → human reviews → informs prompt iteration.
+
+### Step 1: Structured Logging
+
+**Decision:** Zero-dependency JSON logger (`src/lib/logger.ts`) with three methods: `info`, `warn`, `error`. Outputs `{ timestamp, level, message, ...meta }` as JSON to stdout.
+
+**Rationale:** Vercel, Docker, and most platforms capture stdout natively. A structured JSON format lets log aggregators (Datadog, Loki, CloudWatch) parse fields without regex. No dependencies means no version conflicts or bundle bloat for a simple concern.
+
+**Wired into:** Pipeline stages (extracting, classifying, completed, failed with timing), classifier retries (attempt number, delay, error), API routes (POST requests, reanalyze, errors).
+
+### Step 2: Security Hardening
+
+Three concerns addressed:
+
+**SSRF Protection** — Added `isPrivateUrl()` check before `fetchWithTimeout()` in the extractor. Blocks: localhost, 0.0.0.0, private IP ranges (127.x, 10.x, 172.16-31.x, 192.168.x), cloud metadata endpoint (169.254.x), IPv6 loopback/link-local, and non-http(s) schemes (file://, ftp://, etc.). This prevents a submitted URL from hitting internal services or the cloud metadata API.
+
+**Prompt Injection Defense** — Changed classifier user message from flat text (`Title: ... Body: ...`) to XML delimiters (`<article><title>...</title><body>...</body></article>`). System prompt updated to reference the tags. This provides a structural boundary between user-supplied content and LLM instructions. Combined with Zod output validation, the attack surface is minimal.
+
+**Error Sanitization** — API catch blocks now log the real error via `logger.error` but return generic "An internal error occurred" to the client. Prevents leaking stack traces, file paths, or internal service names.
+
+### Step 3: Rate Limiting
+
+**Decision:** In-memory sliding window rate limiter — no Redis, no external dependencies. `checkRateLimit(key, { windowMs, maxRequests })` tracks timestamps per key, returns `{ allowed, retryAfterMs }`.
+
+**Implementation detail:** Keyed by `x-forwarded-for` IP header (standard for Vercel/reverse proxy deployments). Periodic cleanup runs every 5 minutes via `setInterval().unref()` to prevent memory leaks without keeping the process alive.
+
+**Tradeoff acknowledged:** In-memory means per-instance — won't work across multiple serverless instances. For a single-instance deployment or demo, this is fine. A production system at scale would swap to Redis or Upstash. The interface is designed for easy replacement.
+
+### Step 4: Progress Feedback
+
+This was the largest change, touching the pipeline architecture:
+
+**Pipeline refactor** — Extracted `runPipeline(id, url)` from `processUrl()`. Both `processUrl` and `reanalyzeRecord` now call the shared `runPipeline` which updates status through granular stages: `extracting` → `classifying` → `completed`/`failed`. This eliminated code duplication and gave each stage a visible DB state.
+
+**Async POST with `after()`** — The POST route now creates the pending record, returns 202 with the record ID, then uses `after()` from `next/server` to run the pipeline in the background after the response is sent. The client doesn't block on extraction + classification.
+
+**UI polling** — After receiving 202, the UI polls `GET /api/content/{id}` every 2s (max 30 polls = 60s). Shows a spinner with stage labels: "Extracting content from URL..." → "Classifying with AI..." → "Done!". STATUS_COLORS updated for the two new intermediate states (blue for extracting, purple for classifying).
+
+**Database migration** — `002_add_review_columns_and_status.sql` expands the status check constraint and adds review columns (used by Step 5).
+
+**Pipeline tests rewritten** — The mock strategy changed from call-counting to data inspection. `makeUpdateMock` inspects `data.status` to determine the chain behavior (completed gets `select/single`, failed resolves directly, stage updates just resolve). This made tests resilient to changes in the number of DB calls.
+
+**Verification:** 38 tests passing after this step.
+
+### Step 5: Manual Intervention
+
+**Types** — Added `ReviewStatus`, `ReviewSchema`, `ReviewRequest`, and three new fields on `ContentRecord` (`review_status`, `review_notes`, `reviewed_at`).
+
+**PATCH endpoint** — `PATCH /api/content/[id]` validates UUID format + `ReviewSchema` (Zod), updates `review_status`, `review_notes`, `reviewed_at`, and toggles `needs_review` (cleared on approve, kept `true` on reject so it remains flagged for re-review after reanalysis). Logs the review action.
+
+**UI** — Records with `needs_review` (and no existing review) show Approve and Reject buttons. Approve sends an immediate PATCH. Reject opens an inline textarea for optional notes, then a Confirm button sends the PATCH. Already-reviewed records show a colored badge (green for approved, red for rejected). Review notes are displayed below the record when present.
+
+### Step 6: Test Coverage
+
+**New test files:**
+- `logger.test.ts` (6 tests) — JSON output validity, all three log levels, meta field inclusion, works without meta
+- `rate-limit.test.ts` (5 tests) — within limit, exceeds limit, retry-after value, independent keys, window expiry with fake timers
+- Added to `extractor.test.ts`: SSRF protection (6 tests: localhost, 127.x, 10.x, 192.168.x, 169.254.x, file://), text/plain handling (2 tests: extract + empty rejection)
+
+**Coverage config** — Added v8 provider to vitest.config.ts covering `src/lib/**/*.ts` (excluding test files and supabase.ts). Added `npm run test:coverage` script.
+
+**Final verification:** lint clean, TypeScript clean, build passes, **57/57 tests passing** (up from 33).
+
+**Takeaway:** The progression from 33 → 38 → 57 tests mirrors the implementation phases. Each step was verified independently before moving on — no "write everything then test at the end" approach. The SSRF tests in particular are cheap insurance against a critical vulnerability class.
+
+---
+
+## Session 4 — 2026-02-25
+
+### UI Polish & Brand Neutrality
+
+The UI had been restyled to match a professional brand aesthetic (Inter font, warm off-white, pill-shaped buttons, editorial typography), but several issues emerged during review:
+
+**Issue 1 — Branding references throughout the codebase:**
+"Remove references to Tellory"
+
+The project should be brand-neutral — it's a code challenge deliverable, not a branded product. Swept all Tellory references:
+- UI: nav wordmark, description copy, footer text, page title metadata
+- Backend: classifier system prompt ("for a health and wellness platform called Tellory"), extractor User-Agent string (`TelloryBot/1.0`), types file comment, package.json name
+- CSS: comment labels
+
+**Decision:** This is a presentation concern. A code challenge should demonstrate capability without tying itself to a specific brand. The client can apply their own branding on top.
+
+**Issue 2 — "Submit Content" heading and submit button not visible:**
+The "Submit Content" label was using `label-caps` — 11px, #999 gray, which was too subtle against the #fafaf8 background. Upgraded to an `h2` with `font-medium` in #282828 charcoal. The submit button itself was rendering correctly (dark pill with cream text) but the heading above it needed to anchor the section visually.
+
+**Issue 3 — Missing cursor pointer on buttons:**
+Buttons and selects didn't show pointer cursor. Added a global `button, select { cursor: pointer; }` rule. The `.btn-pill` class already had `cursor: pointer` but standalone icon buttons and native selects were missed.
+
+**Takeaway:** UI polish is iterative. What looks right in a design system doesn't always land on the first pass — real-screen testing catches contrast issues, cursor affordances, and visual hierarchy problems that code review alone misses.
+
+### Auth-Wall Detection
+
+**Problem:** A Tellory app URL (`app.tellory.com/article/...`) was classified with 10% confidence and a summary saying "This appears to be a placeholder or navigation page." The confidence was correct — but the user experience was wrong.
+
+**Root cause:** The URL was behind authentication. The extractor fetched the login/signup page HTML, Readability parsed minimal text from it, and the classifier correctly assessed it as low-quality content. But the error should have been caught earlier — we were wasting an LLM call classifying a login page.
+
+**Decision:** Added `isAuthGatedPage()` detection in the extractor, alongside the existing `isProtectedPage()` for bot detection. It checks for signals ("sign in to continue", "subscribe to read", "members only", "paywall", etc.) combined with a text content length check (<500 chars). The length check is important — legitimate articles may mention "sign in" in their header nav, but they'll have substantial body content too.
+
+**Design choice:** Two-factor detection (signal present + low content) avoids false positives on pages that happen to mention login in their navigation. A page with 3000+ characters of article text and a "sign in" link in the header should NOT be blocked.
+
+**Takeaway:** This follows the same pattern as the Cloudflare detection from Stage 3 — detect and fail fast with a clear message rather than proceeding with garbage input. The pipeline already handles failures gracefully (marks as `failed` with `error_message`), so early detection just gives better user feedback.
+
+### Delete Functionality
+
+**Prompt:** "We need a delete button (icon only)"
+
+Added `DELETE /api/content/[id]` endpoint with UUID validation, Supabase delete, structured logging, and sanitized error responses. UI gets a small trash icon (SVG, 14px) positioned before the Reanalyze button on each card — muted gray (#999) with a red hover state. Consistent with the existing icon-only interaction pattern.
+
+**Design note:** The delete button is intentionally minimal — a small icon rather than a labeled button. Destructive actions shouldn't be the most prominent element on a card. The hover colour change (→ red) provides a visual warning before the click.

@@ -41,3 +41,7 @@ next-env.d.ts
 
 # project plan (not part of deliverable)
 project-plan.md
+
+# playwright / screenshots
+.playwright-mcp/
+*.png

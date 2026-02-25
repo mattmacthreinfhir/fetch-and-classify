@@ -177,6 +177,81 @@ describe("extractContent", () => {
   });
 });
 
+describe("SSRF protection", () => {
+  it("blocks localhost", async () => {
+    await expect(extractContent("http://localhost/admin")).rejects.toThrow(
+      "private or internal networks"
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks 127.0.0.1", async () => {
+    await expect(extractContent("http://127.0.0.1/admin")).rejects.toThrow(
+      "private or internal networks"
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks 10.x private range", async () => {
+    await expect(extractContent("http://10.0.0.1/internal")).rejects.toThrow(
+      "private or internal networks"
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks 192.168.x private range", async () => {
+    await expect(extractContent("http://192.168.1.1/admin")).rejects.toThrow(
+      "private or internal networks"
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks 169.254.x link-local / cloud metadata", async () => {
+    await expect(extractContent("http://169.254.169.254/latest/meta-data")).rejects.toThrow(
+      "private or internal networks"
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks file:// protocol", async () => {
+    await expect(extractContent("file:///etc/passwd")).rejects.toThrow(
+      "private or internal networks"
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("text/plain handling", () => {
+  it("extracts plain text content", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response("This is plain text content from a URL.", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    const result = await extractContent("https://example.com/file.txt");
+
+    expect(result.body_text).toBe("This is plain text content from a URL.");
+    expect(result.title).toBeNull();
+    expect(result.author).toBeNull();
+    expect(result.publish_date).toBeNull();
+  });
+
+  it("rejects empty plain text", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response("   ", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      })
+    );
+
+    await expect(extractContent("https://example.com/empty.txt")).rejects.toThrow(
+      "Could not extract"
+    );
+  });
+});
+
 describe("normalizeUrl", () => {
   it("strips fragments", () => {
     expect(normalizeUrl("https://example.com/page#section")).toBe(

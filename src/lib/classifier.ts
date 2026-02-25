@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ClassificationSchema, CATEGORIES } from "@/types";
+import { logger } from "./logger";
 import type { Classification, ExtractedContent } from "@/types";
 
 const MODEL = "claude-sonnet-4-20250514";
@@ -9,12 +10,12 @@ const MAX_BODY_CHARS = MAX_BODY_TOKENS * 4;
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000; // exponential backoff: 1s, 2s, 4s
 
-const SYSTEM_PROMPT = `You are a content classification engine for a health and wellness platform called Tellory.
+const SYSTEM_PROMPT = `You are a content classification engine for a health and wellness platform.
 
 Your job is to classify articles that are relevant to health, wellness, beauty, and lifestyle topics. The platform's content pillars are:
 ${CATEGORIES.join(", ")}
 
-Given an article's title and body text:
+Given an article wrapped in <article> tags (with <title>, <author>, and <body> sub-tags):
 1. Determine whether the article is relevant to health/wellness topics
 2. If relevant, classify it into 1-3 categories from the list above
 3. Write a 2-3 sentence summary
@@ -43,9 +44,13 @@ export async function classifyContent(
   const bodyText = truncateText(content.body_text, MAX_BODY_CHARS);
 
   const userMessage = [
-    content.title ? `Title: ${content.title}` : null,
-    content.author ? `Author: ${content.author}` : null,
-    `\nBody:\n${bodyText}`,
+    "<article>",
+    content.title ? `<title>${content.title}</title>` : null,
+    content.author ? `<author>${content.author}</author>` : null,
+    `<body>${bodyText}</body>`,
+    "</article>",
+    "",
+    "Classify the article above according to your instructions.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -94,6 +99,7 @@ async function retryWithBackoff<T>(
 
       if (attempt < retries - 1) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+        logger.warn("LLM call failed, retrying", { attempt: attempt + 1, delayMs: delay, error: (error as Error).message });
         await sleep(delay);
       }
     }

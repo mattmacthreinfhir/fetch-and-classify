@@ -1,12 +1,37 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { SubmitUrlSchema, ContentQuerySchema } from "@/types";
-import { processUrl } from "@/lib/pipeline";
+import { runPipeline } from "@/lib/pipeline";
+import { normalizeUrl } from "@/lib/extractor";
 import { supabase } from "@/lib/supabase";
+import { logger } from "@/lib/logger";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/content — Submit a URL for ingestion
+ *
+ * Returns 202 immediately with a pending record, then runs the
+ * extract → classify → store pipeline in the background via after().
+ * The client can poll GET /api/content/[id] for status updates.
  */
 export async function POST(request: NextRequest) {
+  // Rate limit: 10 submissions per minute per IP
+  const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "global";
+  const { allowed, retryAfterMs } = checkRateLimit(clientIp, {
+    windowMs: 60_000,
+    maxRequests: 10,
+  });
+
+  if (!allowed) {
+    logger.warn("Rate limit exceeded", { clientIp });
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Max 10 URLs per minute." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) },
+      }
+    );
+  }
+
   try {
     const body = await request.json();
     const parsed = SubmitUrlSchema.safeParse(body);
@@ -18,24 +43,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await processUrl(parsed.data.url);
+    const url = normalizeUrl(parsed.data.url);
+    logger.info("POST /api/content", { url });
 
-    // If the record already existed and was completed, return 200
-    if (result.status === "completed" && result.categories.length > 0) {
+    // Check if URL already exists
+    const { data: existing } = await supabase
+      .from("content")
+      .select("*")
+      .eq("url", url)
+      .single();
+
+    if (existing) {
       return NextResponse.json(
-        { ...result, message: "Content already ingested" },
+        { ...existing, message: "Content already ingested" },
         { status: 200 }
       );
     }
 
+    // Insert pending record
+    const { data: record, error: insertError } = await supabase
+      .from("content")
+      .insert({ url, status: "pending" })
+      .select()
+      .single();
+
+    if (insertError || !record) {
+      throw new Error(`Failed to create record: ${insertError?.message}`);
+    }
+
+    // Run pipeline in background after response is sent
+    after(async () => {
+      try {
+        await runPipeline(record.id, url);
+      } catch (error) {
+        logger.error("Background pipeline failed", {
+          id: record.id,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
     return NextResponse.json(
-      { ...result, message: "Content ingestion started" },
+      { ...record, message: "Content ingestion started" },
       { status: 202 }
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const detail = error instanceof Error ? error.message : "Unknown error";
+    logger.error("POST /api/content failed", { error: detail });
+    return NextResponse.json(
+      { error: "An internal error occurred. Please try again later." },
+      { status: 500 }
+    );
   }
 }
 
@@ -78,8 +136,9 @@ export async function GET(request: NextRequest) {
     const { data, count, error } = await query;
 
     if (error) {
+      logger.error("GET /api/content database error", { error: error.message });
       return NextResponse.json(
-        { error: `Database error: ${error.message}` },
+        { error: "An internal error occurred. Please try again later." },
         { status: 500 }
       );
     }
@@ -91,8 +150,11 @@ export async function GET(request: NextRequest) {
       offset,
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const detail = error instanceof Error ? error.message : "Unknown error";
+    logger.error("GET /api/content failed", { error: detail });
+    return NextResponse.json(
+      { error: "An internal error occurred. Please try again later." },
+      { status: 500 }
+    );
   }
 }

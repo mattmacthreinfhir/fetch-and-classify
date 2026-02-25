@@ -168,9 +168,10 @@ describe("classifyContent", () => {
 
     const callArgs = mockCreate.mock.calls[0][0];
     const userMsg = callArgs.messages[0].content;
-    expect(userMsg).toContain("Title: What Is Cortisol?");
-    expect(userMsg).toContain("Author: WebMD Contributors");
-    expect(userMsg).toContain("Body:");
+    expect(userMsg).toContain("<title>What Is Cortisol?</title>");
+    expect(userMsg).toContain("<author>WebMD Contributors</author>");
+    expect(userMsg).toContain("<body>");
+    expect(userMsg).toContain("<article>");
   });
 
   it("omits title and author from message when null", async () => {
@@ -193,9 +194,9 @@ describe("classifyContent", () => {
 
     const callArgs = mockCreate.mock.calls[0][0];
     const userMsg = callArgs.messages[0].content;
-    expect(userMsg).not.toContain("Title:");
-    expect(userMsg).not.toContain("Author:");
-    expect(userMsg).toContain("Body:");
+    expect(userMsg).not.toContain("<title>");
+    expect(userMsg).not.toContain("<author>");
+    expect(userMsg).toContain("<body>Some content here.</body>");
   });
 
   it("truncates very long body text", async () => {

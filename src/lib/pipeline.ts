@@ -1,24 +1,17 @@
 import { supabase } from "./supabase";
 import { extractContent, normalizeUrl } from "./extractor";
 import { classifyContent } from "./classifier";
+import { logger } from "./logger";
 import type { ContentRecord } from "@/types";
 
 const CONFIDENCE_THRESHOLD = 0.7;
 
 /**
- * Runs the full content ingestion pipeline for a given URL:
- *   1. Insert a pending record
- *   2. Set status to 'processing'
- *   3. Extract content from URL
- *   4. Classify with LLM
- *   5. Store results with status 'completed'
- *
- * On failure at any step, the record is updated to 'failed' with error details.
- * Always records processing_time_ms for observability.
+ * Creates a pending record for a URL and runs the pipeline.
+ * Returns the existing record if the URL was already ingested.
  */
 export async function processUrl(rawUrl: string): Promise<ContentRecord> {
   const url = normalizeUrl(rawUrl);
-  const startTime = Date.now();
 
   // Check if URL already exists
   const { data: existing } = await supabase
@@ -42,22 +35,29 @@ export async function processUrl(rawUrl: string): Promise<ContentRecord> {
     throw new Error(`Failed to create record: ${insertError?.message}`);
   }
 
-  const id = record.id;
+  return runPipeline(record.id, url);
+}
 
-  // Set status to processing
-  await supabase
-    .from("content")
-    .update({ status: "processing" })
-    .eq("id", id);
+/**
+ * Runs the extract → classify → store pipeline on an existing record.
+ * Updates status through granular stages: extracting → classifying → completed.
+ * On failure, sets status to 'failed' with error details.
+ */
+export async function runPipeline(id: string, url: string): Promise<ContentRecord> {
+  const startTime = Date.now();
 
   try {
-    // Step 1: Extract content
+    // Stage 1: Extract
+    await supabase.from("content").update({ status: "extracting" }).eq("id", id);
+    logger.info("Pipeline: extracting", { id, url });
     const extracted = await extractContent(url);
 
-    // Step 2: Classify with LLM
+    // Stage 2: Classify
+    await supabase.from("content").update({ status: "classifying" }).eq("id", id);
+    logger.info("Pipeline: classifying", { id, url });
     const classification = await classifyContent(extracted);
 
-    // Step 3: Store results
+    // Stage 3: Store results
     const processingTimeMs = Date.now() - startTime;
     const needsReview = classification.confidence_score < CONFIDENCE_THRESHOLD;
 
@@ -85,12 +85,14 @@ export async function processUrl(rawUrl: string): Promise<ContentRecord> {
       throw new Error(`Failed to update record: ${updateError?.message}`);
     }
 
+    logger.info("Pipeline: completed", { id, url, processingTimeMs, confidence: classification.confidence_score });
     return completed as ContentRecord;
   } catch (error) {
-    // Record failure with error details and timing
     const processingTimeMs = Date.now() - startTime;
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
+
+    logger.error("Pipeline: failed", { id, url, processingTimeMs, error: errorMessage });
 
     await supabase
       .from("content")
@@ -107,13 +109,10 @@ export async function processUrl(rawUrl: string): Promise<ContentRecord> {
 }
 
 /**
- * Re-runs the extract → classify pipeline on an existing record.
- * Resets the record to 'processing', re-fetches the URL, re-classifies,
- * and updates with fresh results.
+ * Re-runs the pipeline on an existing record.
+ * Clears previous errors and re-fetches + re-classifies from scratch.
  */
 export async function reanalyzeRecord(id: string): Promise<ContentRecord> {
-  const startTime = Date.now();
-
   // Fetch existing record
   const { data: record, error: fetchError } = await supabase
     .from("content")
@@ -125,60 +124,11 @@ export async function reanalyzeRecord(id: string): Promise<ContentRecord> {
     throw new Error("Record not found");
   }
 
-  // Set status to processing
+  // Clear previous errors
   await supabase
     .from("content")
-    .update({ status: "processing", error_message: null })
+    .update({ error_message: null })
     .eq("id", id);
 
-  try {
-    const extracted = await extractContent(record.url);
-    const classification = await classifyContent(extracted);
-
-    const processingTimeMs = Date.now() - startTime;
-    const needsReview = classification.confidence_score < CONFIDENCE_THRESHOLD;
-
-    const { data: updated, error: updateError } = await supabase
-      .from("content")
-      .update({
-        title: extracted.title,
-        body_text: extracted.body_text,
-        author: extracted.author,
-        publish_date: extracted.publish_date,
-        categories: classification.categories,
-        summary: classification.summary,
-        confidence_score: classification.confidence_score,
-        needs_review: needsReview,
-        llm_model: classification.model,
-        processing_time_ms: processingTimeMs,
-        status: "completed",
-        error_message: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (updateError || !updated) {
-      throw new Error(`Failed to update record: ${updateError?.message}`);
-    }
-
-    return updated as ContentRecord;
-  } catch (error) {
-    const processingTimeMs = Date.now() - startTime;
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-
-    await supabase
-      .from("content")
-      .update({
-        status: "failed",
-        error_message: errorMessage,
-        processing_time_ms: processingTimeMs,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-
-    throw error;
-  }
+  return runPipeline(id, record.url);
 }
