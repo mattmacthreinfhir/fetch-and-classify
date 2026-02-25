@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["jsdom", "@mozilla/readability"],
+  /* config options here */
 };
 
 export default nextConfig;
