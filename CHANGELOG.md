@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [0.4.0] - 2026-02-25
 
 ### Added
+- **Professional UI redesign** — complete rewrite of `page.tsx`, `globals.css`, `layout.tsx` with Inter font (weights 200–700), warm off-white (#fafaf8) background, pill-shaped inputs/buttons, rounded-2xl card layout, editorial typography, dark charcoal footer, and inline SVG icons
 - **Delete endpoint** — `DELETE /api/content/[id]` with UUID validation and structured logging
 - **Delete button** — trash icon on each content card for quick record removal
 - **Auth-wall detection** — extractor now detects login/signup gated pages (e.g. "sign in to continue", "subscribe to read") and fails early with a clear error instead of classifying login page HTML as article content
@@ -12,10 +13,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Branding removed** — all Tellory references removed from UI, classifier prompt, User-Agent string, package name, types comments, and CSS comments; project is now brand-neutral
+- **README overhauled** — comprehensive rewrite with Vercel deployment section, security documentation, all 6 API endpoints with curl examples (PATCH, DELETE added), updated project structure (all 57 tests, logger, rate-limit, migration 002), numbered setup steps with env var sourcing table
 - **"Submit Content" heading** upgraded from faint label-caps (11px, gray) to a visible `h2` with `font-medium` and charcoal color
 - Classifier system prompt updated to generic "health and wellness platform" reference
 - Extractor User-Agent changed from `TelloryBot/1.0` to `ContentBot/1.0`
 - Package name changed from `tellory-content-ingestion` to `content-ingestion`
+- `.gitignore` updated to exclude Playwright logs and screenshots
 
 ## [0.3.0] - 2026-02-25
 

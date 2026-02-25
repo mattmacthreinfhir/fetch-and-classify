@@ -299,6 +299,29 @@ Pipeline tests failed initially — `supabase.from(...).update(...).eq(...).sele
 
 ---
 
+**Developer:** OK, can we update CONVERSATION.md and DEVLOG.md to include our interactions, additionally — CHANGELOG.md will need updated.
+
+**Assistant:** Updated all three files: CHANGELOG.md with [0.3.0] section covering all 6 polish steps, DEVLOG.md with Session 3 covering each step in detail, CONVERSATION.md with Session 3 exchange.
+
+---
+
+**Developer:** Lets remove the concept of "Commit \<number>" just summarise it as stages of my driven development process.
+
+**Assistant:** Renamed all "Commit N:" headings to "Stage N: [descriptive name]" across CONVERSATION.md and DEVLOG.md. Updated body text ("commit milestones" → "milestones", etc.) while preserving actual git commit references.
+
+---
+
+**Developer:** As a final step, we need to make the UI much more professional and usable — its actually horrific — check tellory.com for the light touch/font style we need — make this very close to their brand, feel free to use tailwind/shadcn to make this ultra professional.
+
+**Assistant:** Fetched tellory.com via Playwright, took full-page screenshots, and extracted computed CSS values (Inter font weights 200/300/400/700, warm off-white #fafaf8, charcoal #282828, cream #ebe6de, pill buttons with border-radius: 100px, ultra-light headings at weight 200, uppercase label-caps with 3.6px letter-spacing).
+
+Complete rewrite of three files:
+- `globals.css` — brand design system with CSS custom properties, `.btn-pill`, `.btn-pill-dark`, `.btn-pill-outline`, `.label-caps` classes, spin animation
+- `layout.tsx` — switched from Geist to Inter font with weights 200–700
+- `page.tsx` — full page rewrite: nav bar, hero section with ultra-light heading, pill-shaped input + dark CTA, card-based content list with rounded-2xl corners and warm borders, approve/reject UI, dark charcoal footer
+
+**Verification:** Lint clean, TypeScript clean, build passes, 57/57 tests.
+
 ---
 
 ## Session 4 — UI Polish & Hardening
@@ -331,6 +354,30 @@ Also cleaned up remaining Tellory references found in the classifier system prom
 **Assistant:** Added `DELETE /api/content/[id]` endpoint with UUID validation, Supabase delete, and structured logging. Added a small trash icon button to each card (muted gray, red hover state), positioned before the Reanalyze button.
 
 **Verification:** Lint clean, TypeScript clean, build passes.
+
+---
+
+**Developer:** Alright, lets update CHANGELOG.md, CONVERSATION.md and DEVLOG.md appropriately — its important to show the client that I'm thinking about certain issues and solving them as I see them.
+
+**Assistant:** Updated all three files: CHANGELOG.md with [0.4.0] section, CONVERSATION.md with Session 4 exchanges, DEVLOG.md with detailed decision rationale for brand neutrality, auth-wall detection design, and delete button UX.
+
+---
+
+**Developer:** OK lets summarise the latest commit and get ready for Vercel deployment.
+
+**Assistant:** Ran full verification (lint, TypeScript, build, 57/57 tests — all clean). Provided commit message covering production hardening, professional UI, and operational tooling. Checked Vercel readiness — Next.js 16 deploys with zero config, no `vercel.json` needed. Updated `.gitignore` to exclude Playwright screenshots and logs. Listed the 3 env vars needed in the Vercel dashboard and noted migration 002 needs to be run.
+
+---
+
+**Developer:** Can we make sure README.md is clear on development and deployment instructions.
+
+**Assistant:** Comprehensive README rewrite: updated title (removed "Womens Health"), added Vercel deployment section with step-by-step instructions, added Security section documenting all 7 protections, updated all 6 API endpoints with curl examples (added PATCH approve/reject and DELETE), updated project structure with accurate test counts and all files (logger, rate-limit, migration 002), numbered setup steps with env var sourcing table, corrected test count from 33 to 57, added `test:coverage` script.
+
+---
+
+**Developer:** Alright lets review all documentation and make sure it properly reflects tonights sessions.
+
+**Assistant:** Reviewed all three files, identified gaps: CHANGELOG missing UI redesign and README overhaul, CONVERSATION missing the UI redesign exchange and later Session 4 interactions, DEVLOG still referencing "Tellory's production stack" and missing the UI redesign and deployment sections. Updated all three files.
 
 ---
 

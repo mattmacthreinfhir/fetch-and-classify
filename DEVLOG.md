@@ -8,7 +8,7 @@ A transparent record of decisions, questions, and thinking throughout the build 
 
 ### Project Kickoff
 
-Started with a detailed implementation plan (`project-plan.md`) outlining a content ingestion and classification service built on Tellory's production stack: Next.js, Supabase, Anthropic Claude, deployed on Vercel.
+Started with a detailed implementation plan (`project-plan.md`) outlining a content ingestion and classification service built on a modern stack: Next.js, Supabase, Anthropic Claude, deployed on Vercel.
 
 The plan was structured around a 4-hour execution blueprint with specific milestones to demonstrate clean, incremental delivery.
 
@@ -279,6 +279,29 @@ This was the largest change, touching the pipeline architecture:
 
 **Takeaway:** The progression from 33 → 38 → 57 tests mirrors the implementation phases. Each step was verified independently before moving on — no "write everything then test at the end" approach. The SSRF tests in particular are cheap insurance against a critical vulnerability class.
 
+### Professional UI Redesign
+
+**Prompt:** "Make the UI much more professional and usable — its actually horrific — check tellory.com for the light touch/font style we need"
+
+The original UI was functional but generic. Used Playwright to fetch tellory.com, take screenshots, and extract computed CSS values to establish a concrete design system:
+
+**Extracted brand tokens:**
+- Font: Inter (weights 200, 300, 400, 700)
+- Background: warm off-white (#fafaf8)
+- Text: charcoal (#282828), body weight 200 (ultra-light)
+- CTA buttons: charcoal bg, cream text (#ebe6de), border-radius 100px (pill)
+- Section labels: 12px, weight 300, letter-spacing 3.6px, uppercase
+- Headings: 40px, weight 200 with bold `<strong>` tags for emphasis
+
+**Complete rewrite of three files:**
+- `globals.css` — CSS custom properties for the design system, `.btn-pill` / `.btn-pill-dark` / `.btn-pill-outline` / `.label-caps` utility classes, spin animation keyframe
+- `layout.tsx` — switched from default Geist font to Inter with weights 200–700
+- `page.tsx` — full page rewrite: nav bar with wordmark, hero section with editorial typography, pill-shaped URL input + dark submit button with arrow icon, card-based content list (rounded-2xl, warm borders), inline review actions, dark charcoal footer
+
+**Decision:** Extract real CSS values from the target site rather than approximating. Using `browser_evaluate` to pull computed styles ensures pixel-accurate reproduction of the design language.
+
+**Takeaway:** A professional-looking UI dramatically changes the perception of the project. The same backend code with a polished frontend feels production-ready vs. prototype-quality.
+
 ---
 
 ## Session 4 — 2026-02-25
@@ -324,3 +347,23 @@ Buttons and selects didn't show pointer cursor. Added a global `button, select {
 Added `DELETE /api/content/[id]` endpoint with UUID validation, Supabase delete, structured logging, and sanitized error responses. UI gets a small trash icon (SVG, 14px) positioned before the Reanalyze button on each card — muted gray (#999) with a red hover state. Consistent with the existing icon-only interaction pattern.
 
 **Design note:** The delete button is intentionally minimal — a small icon rather than a labeled button. Destructive actions shouldn't be the most prominent element on a card. The hover colour change (→ red) provides a visual warning before the click.
+
+### README Overhaul & Deployment Prep
+
+**Prompt:** "Can we make sure README.md is clear on development and deployment instructions"
+
+The README was significantly outdated — still referenced "Womens Health", old test counts (33 vs 57), missing the PATCH and DELETE endpoints, stale project structure, and had no deployment instructions.
+
+**Complete rewrite:**
+- Updated title to "Content Ingestion & Classification Service"
+- Added **Vercel deployment section** with step-by-step instructions (import repo, add 3 env vars, deploy)
+- Added **Security section** documenting all 7 protections (SSRF, prompt injection, rate limiting, error sanitization, bot detection, auth-wall detection, input validation)
+- Updated API endpoints table to show all 6 routes (added PATCH, DELETE) with curl examples for approve, reject with notes, and delete
+- Updated project structure showing all 5 test files with accurate counts, logger.ts, rate-limit.ts, globals.css, migration 002
+- Numbered setup steps with a table showing where to find each env var
+- Added `test:coverage` to scripts section
+- Notes on rate limiter behaviour in multi-instance deployments and structured log capture on Vercel
+
+**Also updated:** `.gitignore` to exclude Playwright MCP logs and screenshot PNGs from the repo.
+
+**Takeaway:** Documentation should be updated as a final step before deployment, not incrementally during development. During active development, docs drift quickly — one comprehensive pass at the end catches all the stale references, missing features, and incorrect counts.
