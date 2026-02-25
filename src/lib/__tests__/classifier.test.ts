@@ -92,8 +92,8 @@ describe("classifyContent", () => {
     await expect(classifyContent(sampleContent)).rejects.toThrow();
   });
 
-  it("rejects empty categories array", async () => {
-    mockCreate.mockResolvedValue(
+  it("handles empty categories by falling back to lifestyle with low confidence", async () => {
+    mockCreate.mockResolvedValueOnce(
       claudeResponse(
         JSON.stringify({
           categories: [],
@@ -103,7 +103,9 @@ describe("classifyContent", () => {
       )
     );
 
-    await expect(classifyContent(sampleContent)).rejects.toThrow();
+    const result = await classifyContent(sampleContent);
+    expect(result.categories).toEqual(["lifestyle"]);
+    expect(result.confidence_score).toBe(0.15);
   });
 
   it("rejects confidence score out of range", async () => {

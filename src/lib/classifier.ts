@@ -29,6 +29,8 @@ IMPORTANT — Confidence scoring guidelines:
 
 Do NOT force-fit content into categories. A football match report is NOT "fitness" or "lifestyle". A tech product review is NOT "lifestyle". Only assign high confidence when the article genuinely discusses health, wellness, beauty, or related topics as its primary subject.
 
+You MUST always return at least 1 category — even for off-topic content, pick the closest match and use a very low confidence score (0.1 or below). Never return an empty categories array.
+
 Respond ONLY with valid JSON in this exact format:
 {
   "categories": ["category1"],
@@ -77,6 +79,17 @@ async function callClaude(userMessage: string): Promise<Classification> {
     .trim();
 
   const parsed = JSON.parse(cleaned);
+
+  // If the LLM returns empty categories (off-topic content), provide a fallback
+  // rather than letting Zod validation fail and leak raw error details
+  if (Array.isArray(parsed.categories) && parsed.categories.length === 0) {
+    return ClassificationSchema.parse({
+      ...parsed,
+      categories: ["lifestyle"],
+      confidence_score: Math.min(parsed.confidence_score ?? 0.1, 0.15),
+    });
+  }
+
   return ClassificationSchema.parse(parsed);
 }
 
