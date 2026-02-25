@@ -14,4 +14,5 @@ All notable changes to this project will be documented in this file.
 - Database migration SQL with content table, GIN indexes, and RLS policies (`supabase/migrations/001_create_content_table.sql`)
 - Content extraction module using Mozilla Readability with meta tag fallbacks (`src/lib/extractor.ts`)
 - LLM classifier using Claude with structured JSON output, Zod validation, and exponential backoff retry (`src/lib/classifier.ts`)
-- Vitest test suite with 20 tests covering extractor and classifier (`src/lib/__tests__/`)
+- Pipeline orchestration: extract → classify → store with status tracking, error isolation, and timing (`src/lib/pipeline.ts`)
+- Vitest test suite with 26 tests covering extractor, classifier, and pipeline (`src/lib/__tests__/`)
