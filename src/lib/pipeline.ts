@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { extractContent } from "./extractor";
+import { extractContent, normalizeUrl } from "./extractor";
 import { classifyContent } from "./classifier";
 import type { ContentRecord } from "@/types";
 
@@ -16,7 +16,8 @@ const CONFIDENCE_THRESHOLD = 0.7;
  * On failure at any step, the record is updated to 'failed' with error details.
  * Always records processing_time_ms for observability.
  */
-export async function processUrl(url: string): Promise<ContentRecord> {
+export async function processUrl(rawUrl: string): Promise<ContentRecord> {
+  const url = normalizeUrl(rawUrl);
   const startTime = Date.now();
 
   // Check if URL already exists

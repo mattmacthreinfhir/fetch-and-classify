@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { extractContent } from "../extractor";
+import { extractContent, normalizeUrl } from "../extractor";
 
 // Mock global fetch
 const mockFetch = vi.fn();
@@ -41,6 +41,24 @@ const ARTICLE_HTML = `
 </body>
 </html>`;
 
+const JSON_LD_HTML = `
+<html>
+<head>
+  <title>JSON-LD Article</title>
+  <script type="application/ld+json">
+  {
+    "@type": "Article",
+    "headline": "JSON-LD Headline",
+    "author": [{"name": "Alice"}, {"name": "Bob"}],
+    "datePublished": "2025-06-01T12:00:00Z"
+  }
+  </script>
+</head>
+<body>
+  <p>Just some plain text on a page that relies on JSON-LD for metadata rather than meta tags.</p>
+</body>
+</html>`;
+
 const MINIMAL_HTML = `
 <html>
 <head>
@@ -75,6 +93,18 @@ describe("extractContent", () => {
 
     expect(result.title).toBeTruthy();
     expect(result.body_text).toBeTruthy();
+  });
+
+  it("extracts metadata from JSON-LD when meta tags are absent", async () => {
+    mockFetch.mockResolvedValueOnce(htmlResponse(JSON_LD_HTML));
+
+    const result = await extractContent("https://example.com/jsonld");
+
+    // Title comes from <title> tag (Readability or fallback picks it up first)
+    expect(result.title).toBeTruthy();
+    // Author and date extracted from JSON-LD since no meta tags exist
+    expect(result.author).toBe("Alice, Bob");
+    expect(result.publish_date).toBe("2025-06-01T12:00:00Z");
   });
 
   it("rejects non-HTML content types", async () => {
@@ -119,7 +149,9 @@ describe("extractContent", () => {
   });
 
   it("throws descriptive error on generic 403", async () => {
-    mockFetch.mockResolvedValueOnce(errorResponse(403, "<html><body>Forbidden</body></html>"));
+    mockFetch.mockResolvedValueOnce(
+      errorResponse(403, "<html><body>Forbidden</body></html>")
+    );
 
     await expect(extractContent("https://example.com/forbidden")).rejects.toThrow(
       "HTTP 403"
@@ -135,11 +167,48 @@ describe("extractContent", () => {
   });
 
   it("throws on empty page content", async () => {
-    const emptyHtml = "<html><head><title>Empty</title></head><body></body></html>";
+    const emptyHtml =
+      "<html><head><title>Empty</title></head><body></body></html>";
     mockFetch.mockResolvedValueOnce(htmlResponse(emptyHtml));
 
     await expect(extractContent("https://example.com/empty")).rejects.toThrow(
       "Could not extract"
     );
+  });
+});
+
+describe("normalizeUrl", () => {
+  it("strips fragments", () => {
+    expect(normalizeUrl("https://example.com/page#section")).toBe(
+      "https://example.com/page"
+    );
+  });
+
+  it("strips UTM tracking params", () => {
+    expect(
+      normalizeUrl("https://example.com/page?utm_source=twitter&utm_medium=social&key=val")
+    ).toBe("https://example.com/page?key=val");
+  });
+
+  it("strips fbclid and gclid", () => {
+    expect(normalizeUrl("https://example.com/page?fbclid=abc123")).toBe(
+      "https://example.com/page"
+    );
+  });
+
+  it("lowercases hostname", () => {
+    expect(normalizeUrl("https://EXAMPLE.COM/Page")).toBe(
+      "https://example.com/Page"
+    );
+  });
+
+  it("removes trailing slash", () => {
+    expect(normalizeUrl("https://example.com/page/")).toBe(
+      "https://example.com/page"
+    );
+  });
+
+  it("preserves root slash", () => {
+    expect(normalizeUrl("https://example.com/")).toBe("https://example.com/");
   });
 });

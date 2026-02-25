@@ -11,6 +11,7 @@ vi.mock("../supabase", () => ({
 const mockExtractContent = vi.fn();
 vi.mock("../extractor", () => ({
   extractContent: (...args: unknown[]) => mockExtractContent(...args),
+  normalizeUrl: (url: string) => url, // pass-through in tests
 }));
 
 // Mock classifier
