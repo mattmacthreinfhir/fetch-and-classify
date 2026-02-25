@@ -1,5 +1,5 @@
 import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
+import { parseHTML } from "linkedom";
 import type { ExtractedContent } from "@/types";
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -51,8 +51,7 @@ export async function extractContent(url: string): Promise<ExtractedContent> {
     );
   }
 
-  const dom = new JSDOM(html, { url });
-  const document = dom.window.document;
+  const { document } = parseHTML(html);
   const jsonLd = parseJsonLd(document);
 
   // Try Readability first
@@ -372,8 +371,8 @@ function isAuthGatedPage(html: string): boolean {
   // (some legitimate pages mention "sign in" in a header/nav)
   if (signalCount === 0) return false;
   // Check if Readability would find substantial content — if it does, the page isn't truly gated
-  const dom = new JSDOM(html);
-  const textLength = dom.window.document.body?.textContent?.trim().length ?? 0;
+  const { document: doc } = parseHTML(html);
+  const textLength = doc.body?.textContent?.trim().length ?? 0;
   return textLength < 500;
 }
 
